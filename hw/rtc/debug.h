@@ -23,30 +23,39 @@
  extern "C" {
 #endif
 
+#include <stdio.h>
 
 /********************************** debug & error *************************************/
 //#define PFX  __FILE__": "
+//#define  _FD_  fd /* FILE *fd   or  stderr */
 
-#define MSG_INFO		0
-#define MSG_WARNING	    1
-#define MSG_ERROR		2
 
-#define TENDSTR "\n"
+#define MSG_INFO        0
+#define MSG_WARNING     1
+#define MSG_ERROR       2
 
-#define MSG_LEVEL       MSG_INFO
+
+#ifndef TENDSTR
+  #define TENDSTR         "\n"
+#endif
+
+#ifndef MSG_LEVEL
+  #define MSG_LEVEL       MSG_INFO
+#endif
+
 
 #define CONFIG_DBG_SHOW_FUNCTION
 #define CONFIG_DBG_SHOW_LINE_NUM
 
 
-void DebugMessage(int level, const char *prefix, const char *suffix, const char *function, int line, const char *errFmt, ...);
+void DebugMessage(FILE *fd, int level, const char *prefix, const char *suffix, const char *function, int line, const char *errFmt, ...);
 
 
 #ifndef DEBUG
   #define REPORT(level, fmt, ...)
 #else
   #define REPORT(level, fmt, ... ) \
-	DebugMessage(level, PFX, TENDSTR, __func__, __LINE__, fmt, ## __VA_ARGS__)
+    DebugMessage(_FD_, level, PFX, TENDSTR, __func__, __LINE__, fmt, ## __VA_ARGS__)
 #endif
 
 

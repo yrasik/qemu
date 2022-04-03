@@ -32,6 +32,7 @@
 
 #define DEBUG
 #define PFX  __FILE__
+#define _FD_  s->log_file
 #include "debug.h"
 
 
@@ -64,7 +65,7 @@ static const unsigned char pl031_id[] = {
   * @param  fname: Ссылка на строку с именем файла Lua - программы.
   * @retval int В случае неудачи возвращает отрицательные значения.
   */
-static int init_lua(lua_State** pL, const char *fname, FILE *log_file)
+static int init_lua(LUA_DEVICEState *s, const char *fname, FILE *log_file)
 {
   int       err;
   lua_State *L;
@@ -90,14 +91,14 @@ static int init_lua(lua_State** pL, const char *fname, FILE *log_file)
 
   if( lua_pcall(L, 0, 1, 0) != LUA_OK )
   {
-	lua_close( L );
+    lua_close( L );
     REPORT(MSG_ERROR, "if( lua_pcall(L, 0, 1, 0) != LUA_OK )" );
     return -3;
   }
 
   if( ! lua_isinteger(L, -1))
   {
-	lua_close( L );
+    lua_close( L );
     REPORT(MSG_ERROR, "if( ! lua_isinteger(L, -1))" );
     return -4;
   }
@@ -105,7 +106,17 @@ static int init_lua(lua_State** pL, const char *fname, FILE *log_file)
   int ret = lua_tointeger(L, -1);
   lua_pop(L, 1);
 
-  *pL = L;
+
+  lua_getglobal(L, "nanoseconds_per_step");
+  if( lua_type(L, -1) != LUA_TNUMBER )
+  {
+    lua_close( L );
+    REPORT(MSG_ERROR, "if( lua_type(L, -1) != LUA_TNUMBER )" );
+    return -5;
+  }
+  s->nanoseconds_per_step = (int64_t)(lua_tointegerx(L, -1, NULL));
+
+  s->L = L;
   return ret;
 }
 
@@ -117,33 +128,27 @@ static int init_lua(lua_State** pL, const char *fname, FILE *log_file)
   * @param
   * @retval int32_t Возвращает 0 в случае успеха, отрицательные величины в случае неудачи.
   */
-static int32_t lua_device_coroutine_yield(lua_State* L, int64_t time)
+static int32_t lua_device_coroutine_yield(LUA_DEVICEState *s, int64_t time)
 {
-  printf("  **1**\n");
-  printf("  -->> L = %p\n", (void *)L);
+  lua_State *L = s->L;
+
   lua_getglobal(L, "coroutine_yield");
-  printf("  **22**\n");
-#if 1
   lua_pushinteger(L, time);
-  printf("  **2**\n");
   if( lua_pcall(L, 1, 0/*1*/, 0) != LUA_OK )
   {
-    //printf("ERROR : in 'read_data()'  '%s'\n", lua_tostring(L, -1));
+    REPORT(MSG_ERROR, "if( lua_pcall(L, 1, 0, 0) != LUA_OK )" );
     return -1;
   }
-
+/*
   if(! lua_isinteger(L, 1))
   {
-     //printf("ERROR : in return type from 'read_data()'  '%s'\n", lua_tostring(L, -1));
-     return -2;
+    REPORT(MSG_ERROR, "if(! lua_isinteger(L, 1))" );
+    return -2;
   }
 
-#endif
-  printf("  **3**\n");
- // *DAT_O = (uint32_t)lua_tointeger(L, 1);
-
-  //lua_pop(L, 1);//FIXME ?
-
+  *DAT_O = (uint32_t)lua_tointeger(L, 1);
+  lua_pop(L, 1);//FIXME ?
+*/
   return 0;
 }
 
@@ -170,8 +175,8 @@ static int32_t read_data(lua_State* L, const int32_t *CMD_I, int32_t *DAT_O)  //
 
   if(! lua_isinteger(L, 1))
   {
-     printf("ERROR : in return type from 'read_data()'  '%s'\n", lua_tostring(L, -1));
-     return -4;
+    printf("ERROR : in return type from 'read_data()'  '%s'\n", lua_tostring(L, -1));
+    return -4;
   }
 
   *DAT_O = (uint32_t)lua_tointeger(L, 1);
@@ -265,34 +270,15 @@ static int32_t exchange_CAD(lua_State* L, int32_t *CMD_O, int32_t *ADR_O, int32_
 #endif
 
 
-
-
 static void lua_device_timer_exchanger(void * opaque)
 {
-	LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
-	printf("++1++\n");
-    if(s->log_file != NULL)
-    {
-      char str[] = "+\n";
-      fwrite(str, 1, sizeof(str) , s->log_file );
-    }
+  LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
 
-	printf("++2++\n");
-    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-	printf("++21++\n");
-    lua_device_coroutine_yield(s->L, now); //FIXME ret value
-	printf("++3++\n");
-    timer_mod(s->timer_exchange, now + 1000000000/* NANOSECONDS_PER_SECOND * 100000 */); //FIXME
-    //timer_del(s->timer);
+  int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+  REPORT(MSG_INFO, "time = %llu", now);
+  lua_device_coroutine_yield(s, now); //FIXME ret value
+  timer_mod(s->timer_exchange, now + s->nanoseconds_per_step);
 }
-
-
-
-
-
-
-
-
 
 
 static void pl031_update(LUA_DEVICEState *s)
@@ -461,64 +447,43 @@ static const MemoryRegionOps pl031_ops = {
 
 static void pl031_init(Object *obj)
 {
-	LUA_DEVICEState *s = LUA_DEVICE(obj);
-    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
-    struct tm tm;
-    s->L = NULL;
-    char log_file_name[] = "lua_device.log";
+  LUA_DEVICEState *s = LUA_DEVICE(obj);
+  SysBusDevice *dev = SYS_BUS_DEVICE(obj);
+  struct tm tm;
+  s->L = NULL;
+  char log_file_name[] = "lua_device.log";
 
-    s->log_file = fopen(log_file_name, "w");
+  s->log_file = fopen(log_file_name, "w");
 
-    if (s->log_file == NULL)
-    {
-     // error_report("Could not find ROM image '%s'", machine->firmware);
-     // exit(1);
-    }
+  if (s->log_file == NULL)
+  {
+    printf("ERROR: %s: %s @%d - if (s->log_file == NULL)\n", PFX, __func__, __LINE__);
+    exit(1);
+  }
 
+  REPORT(MSG_INFO, "<<<< INIT: lua_device >>>>" );
+  printf("<<<< INIT: lua_device >>>>\n");
 
+  int ret = init_lua(s, "lua_device.lua", s->log_file);
+  if(ret < 0)
+  {
+    exit(1);
+  }
 
-    REPORT(MSG_INFO, "<<<< INIT: lua_device >>>>" );
+  memory_region_init_io(&s->iomem, obj, &pl031_ops, s, "lua_device", 0x1000);
+  sysbus_init_mmio(dev, &s->iomem);
 
-
-
-
-
-    if(s->log_file != NULL)
-    {
-      char str[] = "------------- INIT: lua_device ------------\n";
-      fwrite(str, 1, sizeof(str) , s->log_file );
-    }
-
-    printf("------------- INIT: lua_device ------------\n");
-
-    int ret = init_lua(&(s->L), "lua_device.lua", s->log_file); //FIXME: надо проверить результат
-    if(ret < 0)
-    {
-      printf("ERROR:  !!!!!!!!! int ret = init_lua() < 0 \n");
-    }
-
-
-    printf("1\n");
-    printf("  -->> L = %p\n", (void *)(s->L));
-
-    memory_region_init_io(&s->iomem, obj, &pl031_ops, s, "lua_device", 0x1000);
-    sysbus_init_mmio(dev, &s->iomem);
-
-    sysbus_init_irq(dev, &s->irq);
-    qemu_get_timedate(&tm, 0);
-    s->tick_offset = mktimegm(&tm) -
+  sysbus_init_irq(dev, &s->irq);
+  qemu_get_timedate(&tm, 0);
+  s->tick_offset = mktimegm(&tm) -
         qemu_clock_get_ns(rtc_clock) / NANOSECONDS_PER_SECOND;
 
-    s->timer = timer_new_ns(rtc_clock, pl031_interrupt, s);
+  s->timer = timer_new_ns(rtc_clock, pl031_interrupt, s);
 
-
-    /* Таймер для синхронизации с SystemC / iVerilog */
-    s->timer_exchange = timer_new_ns(QEMU_CLOCK_VIRTUAL, lua_device_timer_exchanger, (void *)s);
-    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    timer_mod(s->timer_exchange, now + 1000000/* NANOSECONDS_PER_SECOND * 100000 */); //FIXME
-    //timer_del(s->timer);
-    printf("2\n");
-
+  /* Таймер для синхронизации с SystemC / iVerilog */
+  s->timer_exchange = timer_new_ns(QEMU_CLOCK_VIRTUAL, lua_device_timer_exchanger, (void *)s);
+  int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+  timer_mod(s->timer_exchange, now + s->nanoseconds_per_step);
 }
 
 static void pl031_finalize(Object *obj)
@@ -528,18 +493,13 @@ static void pl031_finalize(Object *obj)
     timer_free(s->timer_exchange);
     timer_free(s->timer);
 
-
-
     if ( s->L != NULL )
     {
       lua_close( s->L );
     }
 
-    if(s->log_file != NULL)
-    {
-      char str[] = "------------- DEINIT: lua_device ------------\n";
-      fwrite(str, 1, sizeof(str) , s->log_file );
-    }
+    REPORT(MSG_INFO, "<<<< DEINIT: lua_device >>>>" );
+    fclose(s->log_file);
 }
 
 static int pl031_pre_save(void *opaque)

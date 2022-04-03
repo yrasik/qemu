@@ -47,8 +47,9 @@ struct LUA_DEVICEState {
 
     lua_State *L;
     QEMUTimer *timer_exchange;
-
+    int64_t nanoseconds_per_step;
     FILE *log_file;
+
 };
 
 #endif //HW_LUA_DEVICE_H

@@ -19,46 +19,45 @@
 /**
  * \brief The main debug message output function
  */
-void DebugMessage(int level, const char *prefix,
-					   const char *suffix, const char *function, int line, const char *errFmt, ...)
+void DebugMessage(FILE *fd, int level, const char *prefix,
+                    const char *suffix, const char *function, int line, const char *errFmt, ...)
 {
-	va_list arg;
+  va_list arg;
 
-	if (level >= MSG_LEVEL) {
-		switch (level)
-		{
-		  case MSG_INFO :
-			fprintf(stderr, "INFO: ");
-		    break;
-		  case MSG_WARNING :
-			fprintf(stderr, "WARNING: ");
-		    break;
-		  case MSG_ERROR :
-			fprintf(stderr, "ERROR: ");
-		    break;
-		}
+  if (level >= MSG_LEVEL)
+  {
+    switch (level)
+    {
+      case MSG_INFO :
+        fprintf(fd, "INFO: ");
+        break;
+      case MSG_WARNING :
+        fprintf(fd, "WARNING: ");
+        break;
+      case MSG_ERROR :
+        fprintf(fd, "ERROR: ");
+        break;
+    }
 
-		if (prefix)
-			fprintf(stderr, "%s: ", prefix);
+    if (prefix)
+      fprintf(fd, "%s: ", prefix);
 
 #ifdef CONFIG_DBG_SHOW_FUNCTION
-		if (line > 0) {
-			fprintf(stderr, "%s: ", function);
-		}
+    if (line > 0)
+      fprintf(fd, "%s: ", function);
 #endif
 
 #ifdef CONFIG_DBG_SHOW_LINE_NUM
-		if (line > 0) {
-			fprintf(stderr, "@%d - ", line);
-		}
+    if (line > 0)
+      fprintf(fd, "@%d - ", line);
 #endif
 
-		va_start(arg, errFmt);
-		vfprintf(stderr, errFmt, arg);
-		va_end(arg);
+    va_start(arg, errFmt);
+    vfprintf(fd, errFmt, arg);
+    va_end(arg);
 
-		if (suffix)
-			fprintf(stderr, "%s", suffix);
-	}
+    if (suffix)
+      fprintf(fd, "%s", suffix);
+  }
 }
 
