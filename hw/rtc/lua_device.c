@@ -30,6 +30,87 @@
 #include <lua5.3/lualib.h>
 
 
+
+/********************************** debug & error *************************************/
+//#define PFX "dev : "
+
+#define PFX  __FILE__": "
+
+
+
+
+#define MSG_INFO		0
+#define MSG_WARNING	    1
+#define MSG_ERROR		2
+
+
+#define TENDSTR "\n"
+
+
+
+#define MSG_LEVEL       MSG_INFO
+
+
+
+#define CONFIG_DBG_SHOW_LINE_NUM
+
+void DebugMessage(int level, const char *prefix, const char *suffix, int line, const char *errFmt, ...);
+
+
+#ifdef DEBUG
+  #define REPORT(int level, const char *fmt, ...)
+#else
+  #define REPORT(level, fmt, ... ) \
+	DebugMessage(level, PFX, TENDSTR, __LINE__, fmt, ## __VA_ARGS__)
+#endif
+
+
+/**
+ * \brief The main debug message output function
+ */
+void DebugMessage(int level, const char *prefix,
+					   const char *suffix, int line, const char *errFmt, ...)
+{
+	va_list arg;
+
+	if (level >= MSG_LEVEL) {
+		switch (level)
+		{
+		  case MSG_INFO :
+			fprintf(stderr, "INFO: ");
+		    break;
+		  case MSG_WARNING :
+			fprintf(stderr, "WARNING: ");
+		    break;
+		  case MSG_ERROR :
+			fprintf(stderr, "ERROR: ");
+		    break;
+		}
+
+		if (prefix)
+			fprintf(stderr, "%s", prefix);
+
+#ifdef CONFIG_DBG_SHOW_LINE_NUM
+		if (line > 0) {
+			fprintf(stderr, "@%d - ", line);
+		}
+#endif
+		va_start(arg, errFmt);
+		vfprintf(stderr, errFmt, arg);
+		va_end(arg);
+
+		if (suffix)
+			fprintf(stderr, "%s", suffix);
+	}
+}
+
+
+
+
+
+
+
+
 #define RTC_DR      0x00    /* Data read register */
 #define RTC_MR      0x04    /* Match register */
 #define RTC_LR      0x08    /* Data load register */
@@ -64,9 +145,9 @@ static int init_lua(lua_State** pL, const char *fname, FILE *log_file)
   int       err;
   lua_State *L;
   L = luaL_newstate();
-  printf("     init_lua    -->> L = %p\n", (void *)(L));
   if( L == NULL )
   {
+	fprintf(log_file, "ERROR: init_lua: if( L == NULL )\n");
     return -1;
   }
 
@@ -472,8 +553,24 @@ static void pl031_init(Object *obj)
     SysBusDevice *dev = SYS_BUS_DEVICE(obj);
     struct tm tm;
     s->L = NULL;
+    char log_file_name[] = "lua_device.log";
 
-    s->log_file = fopen("lua_device.log", "w");
+    s->log_file = fopen(log_file_name, "w");
+
+    if (s->log_file == NULL)
+    {
+     // error_report("Could not find ROM image '%s'", machine->firmware);
+     // exit(1);
+    }
+
+
+
+    REPORT(MSG_INFO, "<<<< INIT: lua_device >>>>" );
+
+
+
+
+
     if(s->log_file != NULL)
     {
       char str[] = "------------- INIT: lua_device ------------\n";
