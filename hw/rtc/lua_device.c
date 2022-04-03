@@ -30,83 +30,9 @@
 #include <lua5.3/lualib.h>
 
 
-
-/********************************** debug & error *************************************/
-//#define PFX "dev : "
-
+#define DEBUG
 #define PFX  __FILE__": "
-
-
-
-
-#define MSG_INFO		0
-#define MSG_WARNING	    1
-#define MSG_ERROR		2
-
-
-#define TENDSTR "\n"
-
-
-
-#define MSG_LEVEL       MSG_INFO
-
-
-
-#define CONFIG_DBG_SHOW_LINE_NUM
-
-void DebugMessage(int level, const char *prefix, const char *suffix, int line, const char *errFmt, ...);
-
-
-#ifdef DEBUG
-  #define REPORT(int level, const char *fmt, ...)
-#else
-  #define REPORT(level, fmt, ... ) \
-	DebugMessage(level, PFX, TENDSTR, __LINE__, fmt, ## __VA_ARGS__)
-#endif
-
-
-/**
- * \brief The main debug message output function
- */
-void DebugMessage(int level, const char *prefix,
-					   const char *suffix, int line, const char *errFmt, ...)
-{
-	va_list arg;
-
-	if (level >= MSG_LEVEL) {
-		switch (level)
-		{
-		  case MSG_INFO :
-			fprintf(stderr, "INFO: ");
-		    break;
-		  case MSG_WARNING :
-			fprintf(stderr, "WARNING: ");
-		    break;
-		  case MSG_ERROR :
-			fprintf(stderr, "ERROR: ");
-		    break;
-		}
-
-		if (prefix)
-			fprintf(stderr, "%s", prefix);
-
-#ifdef CONFIG_DBG_SHOW_LINE_NUM
-		if (line > 0) {
-			fprintf(stderr, "@%d - ", line);
-		}
-#endif
-		va_start(arg, errFmt);
-		vfprintf(stderr, errFmt, arg);
-		va_end(arg);
-
-		if (suffix)
-			fprintf(stderr, "%s", suffix);
-	}
-}
-
-
-
-
+#include "debug.h"
 
 
 
