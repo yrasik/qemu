@@ -12,6 +12,9 @@ config M48T59
 config PL031
     bool
 
+config LUA_DEVICE
+    bool
+
 config TWL92230
     bool
     depends on I2C

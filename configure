@@ -3306,7 +3306,7 @@ fi
 # Exclude --warn-common with TSan to suppress warnings from the TSan libraries.
 if test "$solaris" = "no" && test "$tsan" = "no"; then
     if $ld --version 2>/dev/null | grep "GNU ld" >/dev/null 2>/dev/null ; then
-        QEMU_LDFLAGS="-Wl,--warn-common $QEMU_LDFLAGS"
+        QEMU_LDFLAGS="-Wl,--warn-common -llua5.3 $QEMU_LDFLAGS"
     fi
 fi
 
