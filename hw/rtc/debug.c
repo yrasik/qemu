@@ -20,7 +20,7 @@
  * \brief The main debug message output function
  */
 void DebugMessage(int level, const char *prefix,
-					   const char *suffix, int line, const char *errFmt, ...)
+					   const char *suffix, const char *function, int line, const char *errFmt, ...)
 {
 	va_list arg;
 
@@ -39,13 +39,20 @@ void DebugMessage(int level, const char *prefix,
 		}
 
 		if (prefix)
-			fprintf(stderr, "%s", prefix);
+			fprintf(stderr, "%s: ", prefix);
+
+#ifdef CONFIG_DBG_SHOW_FUNCTION
+		if (line > 0) {
+			fprintf(stderr, "%s: ", function);
+		}
+#endif
 
 #ifdef CONFIG_DBG_SHOW_LINE_NUM
 		if (line > 0) {
 			fprintf(stderr, "@%d - ", line);
 		}
 #endif
+
 		va_start(arg, errFmt);
 		vfprintf(stderr, errFmt, arg);
 		va_end(arg);

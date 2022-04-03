@@ -1,7 +1,7 @@
 /*
- * ARM AMBA PrimeCell PL031 RTC
+ * lua_device for QEMU
  *
- * Copyright (c) 2007 CodeSourcery
+ * Yuri Stepanenko stepanenkoyra@gmail.com   2022
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -31,10 +31,8 @@
 
 
 #define DEBUG
-#define PFX  __FILE__": "
+#define PFX  __FILE__
 #include "debug.h"
-
-
 
 
 #define RTC_DR      0x00    /* Data read register */
@@ -73,7 +71,7 @@ static int init_lua(lua_State** pL, const char *fname, FILE *log_file)
   L = luaL_newstate();
   if( L == NULL )
   {
-	fprintf(log_file, "ERROR: init_lua: if( L == NULL )\n");
+    REPORT(MSG_ERROR, "if( L == NULL )" );
     return -1;
   }
 
@@ -83,37 +81,25 @@ static int init_lua(lua_State** pL, const char *fname, FILE *log_file)
   if ( err != LUA_OK )
   {
     lua_close( L );
-    //printf("ERROR : if ( err != LUA_OK )\n");
-    if(log_file != NULL)
-    {
-      char str[] = "ERROR : if ( err != LUA_OK )\n";
-      fwrite(str, 1, sizeof(str) , log_file );
-    }
+    REPORT(MSG_ERROR, "if ( err != LUA_OK )" );
     return -2;
   }
-
 
   lua_pcall(L, 0, 0, 0);
   lua_getglobal(L, "init");
 
   if( lua_pcall(L, 0, 1, 0) != LUA_OK )
   {
-    //printf("ERROR : in 'init_env()'  '%s'\n", lua_tostring(L, -1));
-    if(log_file != NULL)
-    {
-      char str[] = "ERROR : in 'init()' \n";
-      fwrite(str, 1, sizeof(str) , log_file );
-    }
+	lua_close( L );
+    REPORT(MSG_ERROR, "if( lua_pcall(L, 0, 1, 0) != LUA_OK )" );
+    return -3;
   }
 
   if( ! lua_isinteger(L, -1))
   {
-    //printf("ERROR : in return type from 'init_env()'  '%s'\n", lua_tostring(L, -1));
-    if(log_file != NULL)
-    {
-      char str[] = "ERROR : in return type from 'init() \n";
-      fwrite(str, 1, sizeof(str) , log_file );
-    }
+	lua_close( L );
+    REPORT(MSG_ERROR, "if( ! lua_isinteger(L, -1))" );
+    return -4;
   }
 
   int ret = lua_tointeger(L, -1);

@@ -35,16 +35,18 @@
 
 #define MSG_LEVEL       MSG_INFO
 
+#define CONFIG_DBG_SHOW_FUNCTION
 #define CONFIG_DBG_SHOW_LINE_NUM
 
-void DebugMessage(int level, const char *prefix, const char *suffix, int line, const char *errFmt, ...);
+
+void DebugMessage(int level, const char *prefix, const char *suffix, const char *function, int line, const char *errFmt, ...);
 
 
 #ifndef DEBUG
   #define REPORT(level, fmt, ...)
 #else
   #define REPORT(level, fmt, ... ) \
-	DebugMessage(level, PFX, TENDSTR, __LINE__, fmt, ## __VA_ARGS__)
+	DebugMessage(level, PFX, TENDSTR, __func__, __LINE__, fmt, ## __VA_ARGS__)
 #endif
 
 
