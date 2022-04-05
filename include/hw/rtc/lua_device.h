@@ -1,7 +1,7 @@
 /*
- * ARM AMBA PrimeCell PL031 RTC
+ * lua_device for QEMU
  *
- * Copyright (c) 2007 CodeSourcery
+ * Yuri Stepanenko stepanenkoyra@gmail.com   2022
  *
  * This file is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as

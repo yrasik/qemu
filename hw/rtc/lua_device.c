@@ -36,20 +36,11 @@
 #include "debug.h"
 
 
-#define RTC_DR      0x00    /* Data read register */
-#define RTC_MR      0x04    /* Match register */
-#define RTC_LR      0x08    /* Data load register */
-#define RTC_CR      0x0c    /* Control register */
-#define RTC_IMSC    0x10    /* Interrupt mask and set register */
-#define RTC_RIS     0x14    /* Raw interrupt status register */
-#define RTC_MIS     0x18    /* Masked interrupt status register */
-#define RTC_ICR     0x1c    /* Interrupt clear register */
-
 #define LUA_REG     0x20    /* Lua register */
 
 
 
-static const unsigned char pl031_id[] = {
+static const unsigned char lua_device_id[] = {
     0xFF,/*0x31,*/ 0x10, 0x14, 0x00,         /* Device ID        */
     0x0d, 0xf0, 0x05, 0xb1          /* Cell ID      */
 };
@@ -257,21 +248,21 @@ static void lua_device_timer_exchanger(void * opaque)
 }
 
 
-static void pl031_update(LUA_DEVICEState *s)
+static void lua_device_update(LUA_DEVICEState *s)
 {
     uint32_t flags = s->is & s->im;
 
-    trace_pl031_irq_state(flags);
+    trace_lua_device_irq_state(flags);
     qemu_set_irq(s->irq, flags);
 }
 
-static void pl031_interrupt(void * opaque)
+static void lua_device_interrupt(void * opaque)
 {
 	LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
 
     s->is = 1;
-    trace_pl031_alarm_raised();
-    pl031_update(s);
+    trace_lua_device_alarm_raised();
+    lua_device_update(s);
 }
 
 
@@ -279,7 +270,7 @@ static void pl031_interrupt(void * opaque)
 
 
 
-static uint64_t pl031_read(void *opaque, hwaddr offset,
+static uint64_t lua_device_read(void *opaque, hwaddr offset,
                            unsigned size)
 {
 	LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
@@ -291,7 +282,7 @@ static uint64_t pl031_read(void *opaque, hwaddr offset,
         break;
 
     case 0xfe0 ... 0xfff:
-        r = pl031_id[(offset - 0xfe0) >> 2];
+        r = lua_device_id[(offset - 0xfe0) >> 2];
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -300,17 +291,17 @@ static uint64_t pl031_read(void *opaque, hwaddr offset,
         break;
     }
 
-    trace_pl031_read(offset, r);
+    trace_lua_device_read(offset, r);
     return r;
 }
 
 
-static void pl031_write(void * opaque, hwaddr offset,
+static void lua_device_write(void * opaque, hwaddr offset,
                         uint64_t value, unsigned size)
 {
 	LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
 
-    trace_pl031_write(offset, value);
+    trace_lua_device_write(offset, value);
 
     switch (offset) {
     case LUA_REG:
@@ -325,14 +316,14 @@ static void pl031_write(void * opaque, hwaddr offset,
 }
 
 
-static const MemoryRegionOps pl031_ops = {
-    .read = pl031_read,
-    .write = pl031_write,
+static const MemoryRegionOps lua_device_ops = {
+    .read = lua_device_read,
+    .write = lua_device_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
 
-static void pl031_init(Object *obj)
+static void lua_device_init(Object *obj)
 {
   LUA_DEVICEState *s = LUA_DEVICE(obj);
   SysBusDevice *dev = SYS_BUS_DEVICE(obj);
@@ -357,7 +348,7 @@ static void pl031_init(Object *obj)
     exit(1);
   }
 
-  memory_region_init_io(&s->iomem, obj, &pl031_ops, s, "lua_device", 0x1000);
+  memory_region_init_io(&s->iomem, obj, &lua_device_ops, s, "lua_device", 0x1000);
   sysbus_init_mmio(dev, &s->iomem);
 
   sysbus_init_irq(dev, &s->irq);
@@ -365,7 +356,7 @@ static void pl031_init(Object *obj)
   s->tick_offset = mktimegm(&tm) -
         qemu_clock_get_ns(rtc_clock) / NANOSECONDS_PER_SECOND;
 
-  s->timer = timer_new_ns(rtc_clock, pl031_interrupt, s);
+  s->timer = timer_new_ns(rtc_clock, lua_device_interrupt, s);
 
   /* Таймер для синхронизации с SystemC / iVerilog */
   s->timer_exchange = timer_new_ns(QEMU_CLOCK_VIRTUAL, lua_device_timer_exchanger, (void *)s);
@@ -374,7 +365,7 @@ static void pl031_init(Object *obj)
 }
 
 
-static void pl031_finalize(Object *obj)
+static void lua_device_finalize(Object *obj)
 {
 	LUA_DEVICEState *s = LUA_DEVICE(obj);
 
@@ -391,7 +382,7 @@ static void pl031_finalize(Object *obj)
 }
 
 
-static int pl031_pre_save(void *opaque)
+static int lua_device_pre_save(void *opaque)
 {
 	//LUA_DEVICEState *s = opaque;
 
@@ -399,7 +390,7 @@ static int pl031_pre_save(void *opaque)
 }
 
 
-static int pl031_pre_load(void *opaque)
+static int lua_device_pre_load(void *opaque)
 {
 	//LUA_DEVICEState *s = opaque;
 
@@ -407,7 +398,7 @@ static int pl031_pre_load(void *opaque)
 }
 
 
-static int pl031_post_load(void *opaque, int version_id)
+static int lua_device_post_load(void *opaque, int version_id)
 {
 	//LUA_DEVICEState *s = opaque;
 
@@ -415,7 +406,7 @@ static int pl031_post_load(void *opaque, int version_id)
 }
 
 
-static int pl031_tick_offset_post_load(void *opaque, int version_id)
+static int lua_device_tick_offset_post_load(void *opaque, int version_id)
 {
 	LUA_DEVICEState *s = opaque;
 
@@ -423,32 +414,32 @@ static int pl031_tick_offset_post_load(void *opaque, int version_id)
   return 0;
 }
 
-static bool pl031_tick_offset_needed(void *opaque)
+static bool lua_device_tick_offset_needed(void *opaque)
 {
 	LUA_DEVICEState *s = opaque;
 
   return s->migrate_tick_offset;
 }
 
-static const VMStateDescription vmstate_pl031_tick_offset = {
+static const VMStateDescription vmstate_lua_device_tick_offset = {
     .name = "lua_device/tick-offset",
     .version_id = 1,
     .minimum_version_id = 1,
-    .needed = pl031_tick_offset_needed,
-    .post_load = pl031_tick_offset_post_load,
+    .needed = lua_device_tick_offset_needed,
+    .post_load = lua_device_tick_offset_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(tick_offset, LUA_DEVICEState),
         VMSTATE_END_OF_LIST()
     }
 };
 
-static const VMStateDescription vmstate_pl031 = {
+static const VMStateDescription vmstate_lua_device = {
     .name = "lua_device",
     .version_id = 1,
     .minimum_version_id = 1,
-    .pre_save = pl031_pre_save,
-    .pre_load = pl031_pre_load,
-    .post_load = pl031_post_load,
+    .pre_save = lua_device_pre_save,
+    .pre_load = lua_device_pre_load,
+    .post_load = lua_device_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(tick_offset_vmstate, LUA_DEVICEState),
         VMSTATE_UINT32(mr, LUA_DEVICEState),
@@ -459,13 +450,13 @@ static const VMStateDescription vmstate_pl031 = {
         VMSTATE_END_OF_LIST()
     },
     .subsections = (const VMStateDescription*[]) {
-        &vmstate_pl031_tick_offset,
+        &vmstate_lua_device_tick_offset,
         NULL
     }
 };
 
 
-static Property pl031_properties[] = {
+static Property lua_device_properties[] = {
     /*
      * True to correctly migrate the tick offset of the RTC. False to
      * obtain backward migration compatibility with older QEMU versions,
@@ -480,28 +471,28 @@ static Property pl031_properties[] = {
 };
 
 
-static void pl031_class_init(ObjectClass *klass, void *data)
+static void lua_device_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->vmsd = &vmstate_pl031;
-    device_class_set_props(dc, pl031_properties);
+    dc->vmsd = &vmstate_lua_device;
+    device_class_set_props(dc, lua_device_properties);
 }
 
 
-static const TypeInfo pl031_info = {
+static const TypeInfo lua_device_info = {
     .name          = TYPE_LUA_DEVICE,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(LUA_DEVICEState),
-    .instance_init = pl031_init,
-    .instance_finalize = pl031_finalize,
-    .class_init    = pl031_class_init,
+    .instance_init = lua_device_init,
+    .instance_finalize = lua_device_finalize,
+    .class_init    = lua_device_class_init,
 };
 
 
 static void lua_device_register_types(void)
 {
-    type_register_static(&pl031_info);
+    type_register_static(&lua_device_info);
 }
 
 
