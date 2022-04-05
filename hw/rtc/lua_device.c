@@ -128,12 +128,12 @@ static int init_lua(LUA_DEVICEState *s, const char *fname, FILE *log_file)
   * @param
   * @retval int32_t Возвращает 0 в случае успеха, отрицательные величины в случае неудачи.
   */
-static int32_t lua_device_coroutine_yield(LUA_DEVICEState *s, int64_t time)
+static int32_t lua_device_coroutine_yield(LUA_DEVICEState *s, uint64_t time_ns)
 {
   lua_State *L = s->L;
 
   lua_getglobal(L, "coroutine_yield");
-  lua_pushinteger(L, time);
+  lua_pushinteger(L, (lua_Integer)time_ns);
   if( lua_pcall(L, 1, 0/*1*/, 0) != LUA_OK )
   {
     REPORT(MSG_ERROR, "if( lua_pcall(L, 1, 0, 0) != LUA_OK )" );
@@ -153,121 +153,97 @@ static int32_t lua_device_coroutine_yield(LUA_DEVICEState *s, int64_t time)
 }
 
 
-
 /**
   * @brief Чтение данных из Lua.
   * @param  L: Указатель на Lua - машину.
-  * @param  CMD_I: Команда: 0 - сброс источника, 1 - работа.
-  * @param  DAT_O: Возвращает данные (32 бита) для записи в поток данных Verilog.
+  * @param  TIME_I: временная метка для передачи в Lua.
+  * @param  ADR_I: Адрес ячейки.
+  * @param  DAT_O: Возвращает данные.
   * @retval int32_t Возвращает 0 в случае успеха, отрицательные величины в случае неудачи.
   */
-static int32_t read_data(lua_State* L, const int32_t *CMD_I, int32_t *DAT_O)  // CMD_I -> lua -> DAT_O
+static int32_t read_data(LUA_DEVICEState *s, uint64_t time_ns, uint64_t ADR_I, uint64_t *DAT_O)
 {
+  int32_t status;
+  lua_State *L = s->L;
+
   lua_getglobal(L, "read_data");
 
-  lua_pushinteger(L, *CMD_I);
+  lua_pushinteger(L, (lua_Integer)time_ns);
+  lua_pushinteger(L, (lua_Integer)ADR_I);
 
-  if( lua_pcall(L, 1, 1, 0) != LUA_OK )
+  if( lua_pcall(L, 2, 2, 0) != LUA_OK )
   {
-    printf("ERROR : in 'read_data()'  '%s'\n", lua_tostring(L, -1));
+    REPORT(MSG_ERROR, "if( lua_pcall(L, 2, 2, 0) != LUA_OK )" );
     return -1;
   }
 
-  if(! lua_isinteger(L, 1))
+  if( ! lua_isinteger(L, 1))
   {
-    printf("ERROR : in return type from 'read_data()'  '%s'\n", lua_tostring(L, -1));
+    REPORT(MSG_ERROR, "if(! lua_isinteger(L, 1))" );
+    return -2;
+  }
+
+  status = (int32_t)lua_tointeger(L, 1);
+
+  if( status < 0 )
+  {
+    REPORT(MSG_ERROR, "if(status < 0)" );
+    return -3;
+  }
+
+  if( ! lua_isinteger(L, 2))
+  {
+    REPORT(MSG_ERROR, "if(! lua_isinteger(L, 2))" );
     return -4;
   }
 
-  *DAT_O = (uint32_t)lua_tointeger(L, 1);
+  *DAT_O = (uint64_t)lua_tointeger(L, 2);
 
-  lua_pop(L, 1);//FIXME ?
+  lua_pop(L, 2);
 
   return 0;
 }
 
 
-#if 0
 /**
   * @brief Запись данных в Lua.
   * @param  L: Указатель на Lua - машину.
   * @param  TIME_I: временная метка для передачи в Lua.
+  * @param  ADR_I: Адрес ячейки.
   * @param  DAT_I: Считывает данные (32 бита) для передачи в Lua.
   * @retval int32_t Возвращает 0 в случае успеха, отрицательные величины в случае неудачи.
   */
-static int32_t write_data(lua_State* L, const int32_t *TIME_I, const int32_t *DAT_I) // TIME_I, DAT_I -> lua
+static int32_t write_data(LUA_DEVICEState *s, uint64_t time_ns, uint64_t ADR_I, uint64_t DAT_I)
 {
+  int32_t status;
+  lua_State *L = s->L;
+
   lua_getglobal(L, "write_data");
 
-  lua_pushinteger(L, *TIME_I);
-  lua_pushinteger(L, *DAT_I);
+  lua_pushinteger(L, (lua_Integer)time_ns);
+  lua_pushinteger(L, (lua_Integer)ADR_I);
 
-  if( lua_pcall(L, 2, 0, 0) != LUA_OK )
+  if( lua_pcall(L, 2, 1, 0) != LUA_OK )
   {
-    printf("ERROR : in 'write_data()'  '%s'\n", lua_tostring(L, -1));
+    REPORT(MSG_ERROR, "if( lua_pcall(L, 2, 1, 0) != LUA_OK )" );
     return -1;
   }
 
-  return 0;
-}
-#endif
+  status = (int32_t)lua_tointeger(L, 1);
 
-
-#if 0
-/**
-  * @brief Обмен данными, приспособленный под интерфейс системной шины процессора.
-  * @param  L: Указатель на Lua - машину.
-  * @param  CMD_O: Возвращает код команды (ожидание, запись, чтение). Эта команда используется автоматом состояний, написанном на Verilog для отработки соответствующей временной диаграмы на шине данных.
-  * @param  ADR_O: Возвращает адрес (32 бита) для формирования на шине адреса.
-  * @param  DAT_O: Возвращает данные (32 бита) для формирования на шине данных.
-  * @param  DAT_I: Считывает данные (32 бита), принимаемые по шине данных.
-  * @param  STATUS_I: Считывает состояния сигналов сброса и прерываний (32 бита, рекомендуется в 31 бит помещать состояние сигнала сброса.)
-  * @retval int32_t Возвращает 0 в случае успеха, отрицательные величины в случае неудачи.
-  */
-static int32_t exchange_CAD(lua_State* L, int32_t *CMD_O, int32_t *ADR_O, int32_t *DAT_O, const int32_t *DAT_I, const int32_t *STATUS_I)
-{
-  lua_getglobal(L, "exchange_CAD");
-
-  lua_pushinteger(L, *DAT_I);
-  lua_pushinteger(L, *STATUS_I);
-
-  if( lua_pcall(L, 2, 3, 0) != LUA_OK )
+  if( status < 0 )
   {
-    //printf("ERROR : in 'exchange_CAD()'  '%s'\n", lua_tostring(L, -1));
-    return -1;
+    REPORT(MSG_ERROR, "if(status < 0)" );
+    return -2;
   }
 
-
-  if(! lua_isinteger(L, 1))
-  {
-     //printf("ERROR : in return type from 'exchange_CAD()'  '%s'\n", lua_tostring(L, -1));
-     return -2;
-  }
-  *CMD_O = (uint32_t)lua_tointeger(L, 1);
-
-
-  if(! lua_isinteger(L, 2))
-  {
-     //printf("ERROR : in return type from 'exchange_CAD()'  '%s'\n", lua_tostring(L, -1));
-     return -3;
-  }
-  *ADR_O = (uint32_t)lua_tointeger(L, 2);
-
-
-  if(! lua_isinteger(L, 3))
-  {
-     //printf("ERROR : in return type from 'exchange_CAD()'  '%s'\n", lua_tostring(L, -1));
-     return -4;
-  }
-
-  *DAT_O = (uint32_t)lua_tointeger(L, 3);
-
-  lua_pop(L, 3);//FIXME ?
+  lua_pop(L, 1);
 
   return 0;
 }
 
-#endif
+
+
 
 
 static void lua_device_timer_exchanger(void * opaque)
@@ -298,80 +274,25 @@ static void pl031_interrupt(void * opaque)
     pl031_update(s);
 }
 
-static uint32_t pl031_get_count(LUA_DEVICEState *s)
-{
-    int64_t now = qemu_clock_get_ns(rtc_clock);
-    return s->tick_offset + now / NANOSECONDS_PER_SECOND;
-}
 
-static void pl031_set_alarm(LUA_DEVICEState *s)
-{
-    uint32_t ticks;
 
-    /* The timer wraps around.  This subtraction also wraps in the same way,
-       and gives correct results when alarm < now_ticks.  */
-    ticks = s->mr - pl031_get_count(s);
-    trace_pl031_set_alarm(ticks);
-    if (ticks == 0) {
-        timer_del(s->timer);
-        pl031_interrupt(s);
-    } else {
-        int64_t now = qemu_clock_get_ns(rtc_clock);
-        timer_mod(s->timer, now + (int64_t)ticks * NANOSECONDS_PER_SECOND);
-    }
-}
+
+
 
 static uint64_t pl031_read(void *opaque, hwaddr offset,
                            unsigned size)
 {
 	LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
-    uint64_t r;
+    uint64_t r = 0;
 
     switch (offset) {
-    case RTC_DR:
-        r = pl031_get_count(s);
+    case LUA_REG:
+        read_data(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), (uint64_t)offset, &r); //FIXME: ret
         break;
-    case RTC_MR:
-        r = s->mr;
-        break;
-    case RTC_IMSC:
-        r = s->im;
-        break;
-    case RTC_RIS:
-        r = s->is;
-        break;
-    case RTC_LR:
-        r = s->lr;
-        break;
-    case RTC_CR:
-        /* RTC is permanently enabled.  */
-        r = 1;
-        break;
-    case RTC_MIS:
-        r = s->is & s->im;
-        break;
+
     case 0xfe0 ... 0xfff:
         r = pl031_id[(offset - 0xfe0) >> 2];
         break;
-    case RTC_ICR:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "lua_device: read of write-only register at offset 0x%x\n",
-                      (int)offset);
-        r = 0;
-        break;
-    case LUA_REG:
-        { 
-          int ret;
-          int32_t CMD = 0;
-          int32_t DAT = 0;
-          if ( (ret = read_data(s->L, &CMD, &DAT)) < 0)
-          {
-            qemu_log_mask(LOG_GUEST_ERROR, "lua_device_read: LUA_REG: %d\n", ret);
-          }
-          r = (uint64_t)DAT;
-        }
-        break;
-
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "lua_device_read: Bad offset 0x%x\n", (int)offset);
@@ -383,6 +304,7 @@ static uint64_t pl031_read(void *opaque, hwaddr offset,
     return r;
 }
 
+
 static void pl031_write(void * opaque, hwaddr offset,
                         uint64_t value, unsigned size)
 {
@@ -391,45 +313,8 @@ static void pl031_write(void * opaque, hwaddr offset,
     trace_pl031_write(offset, value);
 
     switch (offset) {
-    case RTC_LR: {
-        struct tm tm;
-
-        s->tick_offset += value - pl031_get_count(s);
-
-        qemu_get_timedate(&tm, s->tick_offset);
-        qapi_event_send_rtc_change(qemu_timedate_diff(&tm));
-
-        pl031_set_alarm(s);
-        break;
-    }
-    case RTC_MR:
-        s->mr = value;
-        pl031_set_alarm(s);
-        break;
-    case RTC_IMSC:
-        s->im = value & 1;
-        pl031_update(s);
-        break;
-    case RTC_ICR:
-        s->is &= ~value;
-        pl031_update(s);
-        break;
-    case RTC_CR:
-        /* Written value is ignored.  */
-        break;
-
-    case RTC_DR:
-    case RTC_MIS:
-    case RTC_RIS:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "lua_device: write to read-only register at offset 0x%x\n",
-                      (int)offset);
-        break;
-
     case LUA_REG:
-
-
-
+        write_data(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), (uint64_t)offset, value);
         break;
 
     default:
@@ -439,11 +324,13 @@ static void pl031_write(void * opaque, hwaddr offset,
     }
 }
 
+
 static const MemoryRegionOps pl031_ops = {
     .read = pl031_read,
     .write = pl031_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
+
 
 static void pl031_init(Object *obj)
 {
@@ -464,9 +351,9 @@ static void pl031_init(Object *obj)
   REPORT(MSG_INFO, "<<<< INIT: lua_device >>>>" );
   printf("<<<< INIT: lua_device >>>>\n");
 
-  int ret = init_lua(s, "lua_device.lua", s->log_file);
-  if(ret < 0)
+  if( init_lua(s, "lua_device.lua", s->log_file) < 0 )
   {
+    REPORT(MSG_INFO, "if( init_lua(s, \"lua_device.lua\", s->log_file) < 0 )" );
     exit(1);
   }
 
@@ -486,6 +373,7 @@ static void pl031_init(Object *obj)
   timer_mod(s->timer_exchange, now + s->nanoseconds_per_step);
 }
 
+
 static void pl031_finalize(Object *obj)
 {
 	LUA_DEVICEState *s = LUA_DEVICE(obj);
@@ -502,78 +390,44 @@ static void pl031_finalize(Object *obj)
     fclose(s->log_file);
 }
 
+
 static int pl031_pre_save(void *opaque)
 {
-	LUA_DEVICEState *s = opaque;
+	//LUA_DEVICEState *s = opaque;
 
-    /*
-     * The PL031 device model code uses the tick_offset field, which is
-     * the offset between what the guest RTC should read and what the
-     * QEMU rtc_clock reads:
-     *  guest_rtc = rtc_clock + tick_offset
-     * and so
-     *  tick_offset = guest_rtc - rtc_clock
-     *
-     * We want to migrate this offset, which sounds straightforward.
-     * Unfortunately older versions of QEMU migrated a conversion of this
-     * offset into an offset from the vm_clock. (This was in turn an
-     * attempt to be compatible with even older QEMU versions, but it
-     * has incorrect behaviour if the rtc_clock is not the same as the
-     * vm_clock.) So we put the actual tick_offset into a migration
-     * subsection, and the backwards-compatible time-relative-to-vm_clock
-     * in the main migration state.
-     *
-     * Calculate base time relative to QEMU_CLOCK_VIRTUAL:
-     */
-    int64_t delta = qemu_clock_get_ns(rtc_clock) - qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    s->tick_offset_vmstate = s->tick_offset + delta / NANOSECONDS_PER_SECOND;
-
-    return 0;
+  return 0;
 }
+
 
 static int pl031_pre_load(void *opaque)
 {
-	LUA_DEVICEState *s = opaque;
+	//LUA_DEVICEState *s = opaque;
 
-    s->tick_offset_migrated = false;
-    return 0;
+  return 0;
 }
+
 
 static int pl031_post_load(void *opaque, int version_id)
 {
-	LUA_DEVICEState *s = opaque;
+	//LUA_DEVICEState *s = opaque;
 
-    /*
-     * If we got the tick_offset subsection, then we can just use
-     * the value in that. Otherwise the source is an older QEMU and
-     * has given us the offset from the vm_clock; convert it back to
-     * an offset from the rtc_clock. This will cause time to incorrectly
-     * go backwards compared to the host RTC, but this is unavoidable.
-     */
-
-    if (!s->tick_offset_migrated) {
-        int64_t delta = qemu_clock_get_ns(rtc_clock) -
-            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-        s->tick_offset = s->tick_offset_vmstate -
-            delta / NANOSECONDS_PER_SECOND;
-    }
-    pl031_set_alarm(s);
-    return 0;
+  return 0;
 }
+
 
 static int pl031_tick_offset_post_load(void *opaque, int version_id)
 {
 	LUA_DEVICEState *s = opaque;
 
-    s->tick_offset_migrated = true;
-    return 0;
+  s->tick_offset_migrated = true;
+  return 0;
 }
 
 static bool pl031_tick_offset_needed(void *opaque)
 {
 	LUA_DEVICEState *s = opaque;
 
-    return s->migrate_tick_offset;
+  return s->migrate_tick_offset;
 }
 
 static const VMStateDescription vmstate_pl031_tick_offset = {
@@ -610,6 +464,7 @@ static const VMStateDescription vmstate_pl031 = {
     }
 };
 
+
 static Property pl031_properties[] = {
     /*
      * True to correctly migrate the tick offset of the RTC. False to
@@ -624,6 +479,7 @@ static Property pl031_properties[] = {
     DEFINE_PROP_END_OF_LIST()
 };
 
+
 static void pl031_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -631,6 +487,7 @@ static void pl031_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_pl031;
     device_class_set_props(dc, pl031_properties);
 }
+
 
 static const TypeInfo pl031_info = {
     .name          = TYPE_LUA_DEVICE,
@@ -641,9 +498,11 @@ static const TypeInfo pl031_info = {
     .class_init    = pl031_class_init,
 };
 
+
 static void lua_device_register_types(void)
 {
     type_register_static(&pl031_info);
 }
+
 
 type_init(lua_device_register_types)
