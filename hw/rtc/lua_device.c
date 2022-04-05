@@ -46,11 +46,6 @@ static const unsigned char lua_device_id[] = {
 };
 
 
-
-
-
-
-
 /**
   * @brief Инициализация Lua - машины.
   * @param  fname: Ссылка на строку с именем файла Lua - программы.
@@ -112,6 +107,15 @@ static int init_lua(LUA_DEVICEState *s, const char *fname, FILE *log_file)
 }
 
 
+static void lua_device_irq(LUA_DEVICEState *s)
+{
+    uint32_t flags = 1; //s->is & s->im;
+
+    trace_lua_device_irq_state(flags);
+    qemu_set_irq(s->irq, flags);
+}
+
+
 /**
   * @brief
   * @param  L: Указатель на Lua - машину.
@@ -121,25 +125,30 @@ static int init_lua(LUA_DEVICEState *s, const char *fname, FILE *log_file)
   */
 static int32_t lua_device_coroutine_yield(LUA_DEVICEState *s, uint64_t time_ns)
 {
+  int32_t status;
   lua_State *L = s->L;
 
   lua_getglobal(L, "coroutine_yield");
   lua_pushinteger(L, (lua_Integer)time_ns);
-  if( lua_pcall(L, 1, 0/*1*/, 0) != LUA_OK )
+  if( lua_pcall(L, 1, 1, 0) != LUA_OK )
   {
-    REPORT(MSG_ERROR, "if( lua_pcall(L, 1, 0, 0) != LUA_OK )" );
+    REPORT(MSG_ERROR, "if( lua_pcall(L, 1, 1, 0) != LUA_OK )" );
     return -1;
   }
-/*
-  if(! lua_isinteger(L, 1))
+
+  status = (int32_t)lua_tointeger(L, 1);
+
+  if( status < 0 )
   {
-    REPORT(MSG_ERROR, "if(! lua_isinteger(L, 1))" );
+    REPORT(MSG_ERROR, "if(status < 0)" );
     return -2;
   }
 
-  *DAT_O = (uint32_t)lua_tointeger(L, 1);
-  lua_pop(L, 1);//FIXME ?
-*/
+  if( status == 1 ) //INFO: Генерация прерывания
+  {
+    lua_device_irq(s);
+  }
+
   return 0;
 }
 
@@ -192,6 +201,11 @@ static int32_t read_data(LUA_DEVICEState *s, uint64_t time_ns, uint64_t ADR_I, u
 
   lua_pop(L, 2);
 
+  if( status == 1 ) //INFO: Генерация прерывания
+  {
+    lua_device_irq(s);
+  }
+
   return 0;
 }
 
@@ -230,6 +244,11 @@ static int32_t write_data(LUA_DEVICEState *s, uint64_t time_ns, uint64_t ADR_I, 
 
   lua_pop(L, 1);
 
+  if( status == 1 ) //INFO: Генерация прерывания
+  {
+    lua_device_irq(s);
+  }
+
   return 0;
 }
 
@@ -246,28 +265,6 @@ static void lua_device_timer_exchanger(void * opaque)
   lua_device_coroutine_yield(s, now); //FIXME ret value
   timer_mod(s->timer_exchange, now + s->nanoseconds_per_step);
 }
-
-
-static void lua_device_update(LUA_DEVICEState *s)
-{
-    uint32_t flags = s->is & s->im;
-
-    trace_lua_device_irq_state(flags);
-    qemu_set_irq(s->irq, flags);
-}
-
-static void lua_device_interrupt(void * opaque)
-{
-	LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
-
-    s->is = 1;
-    trace_lua_device_alarm_raised();
-    lua_device_update(s);
-}
-
-
-
-
 
 
 static uint64_t lua_device_read(void *opaque, hwaddr offset,
@@ -355,8 +352,6 @@ static void lua_device_init(Object *obj)
   qemu_get_timedate(&tm, 0);
   s->tick_offset = mktimegm(&tm) -
         qemu_clock_get_ns(rtc_clock) / NANOSECONDS_PER_SECOND;
-
-  s->timer = timer_new_ns(rtc_clock, lua_device_interrupt, s);
 
   /* Таймер для синхронизации с SystemC / iVerilog */
   s->timer_exchange = timer_new_ns(QEMU_CLOCK_VIRTUAL, lua_device_timer_exchanger, (void *)s);
