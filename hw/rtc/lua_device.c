@@ -36,8 +36,8 @@
 #include "debug.h"
 
 
-#define LUA_REG     0x20    /* Lua register */
-
+#define LUA_REG_START     0x00    /* Lua register */
+#define LUA_REG_END       0x1C    /* Lua register */
 
 
 static const unsigned char lua_device_id[] = {
@@ -242,10 +242,11 @@ static int32_t write_data(LUA_DEVICEState *s, uint64_t time_ns, uint64_t ADR_I, 
 
   lua_pushinteger(L, (lua_Integer)time_ns);
   lua_pushinteger(L, (lua_Integer)ADR_I);
+  lua_pushinteger(L, (lua_Integer)DAT_I);
 
-  if( lua_pcall(L, 2, 1, 0) != LUA_OK )
+  if( lua_pcall(L, 3, 1, 0) != LUA_OK )
   {
-    REPORT(MSG_ERROR, "if( lua_pcall(L, 2, 1, 0) != LUA_OK )" );
+    REPORT(MSG_ERROR, "if( lua_pcall(L, 3, 1, 0) != LUA_OK )" );
     return -1;
   }
 
@@ -278,9 +279,6 @@ static int32_t write_data(LUA_DEVICEState *s, uint64_t time_ns, uint64_t ADR_I, 
 }
 
 
-
-
-
 static void lua_device_timer_exchanger(void * opaque)
 {
   LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
@@ -299,7 +297,7 @@ static uint64_t lua_device_read(void *opaque, hwaddr offset, unsigned size)
 
     switch (offset)
     {
-      case LUA_REG:
+      case LUA_REG_START ... LUA_REG_END:
         read_data(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), (uint64_t)offset, &r); //FIXME: ret
         break;
 
@@ -325,7 +323,7 @@ static void lua_device_write(void * opaque, hwaddr offset, uint64_t value, unsig
 
     switch (offset) 
     {
-      case LUA_REG:
+      case LUA_REG_START ... LUA_REG_END:
         write_data(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), (uint64_t)offset, value);
         break;
 
