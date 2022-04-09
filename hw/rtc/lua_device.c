@@ -109,10 +109,10 @@ static int init_lua(LUA_DEVICEState *s, const char *fname, FILE *log_file)
 
 static void lua_device_irq(LUA_DEVICEState *s)
 {
-    uint32_t flags = 1; //s->is & s->im;
+  uint32_t flags = 1; //s->is & s->im;
 
-    trace_lua_device_irq_state(flags);
-    qemu_set_irq(s->irq, flags);
+  trace_lua_device_irq_state(flags);
+  qemu_set_irq(s->irq, flags);
 }
 
 
@@ -135,14 +135,23 @@ static int32_t lua_device_coroutine_yield(LUA_DEVICEState *s, uint64_t time_ns)
     REPORT(MSG_ERROR, "if( lua_pcall(L, 1, 1, 0) != LUA_OK )" );
     return -1;
   }
+#ifdef DEBUG
+  if( ! lua_isinteger(L, -1))
+  {
+    REPORT(MSG_ERROR, "if(! lua_isinteger(L, -1))" );
+    return -2;
+  }
+#endif
 
-  status = (int32_t)lua_tointeger(L, 1);
+  status = (int32_t)lua_tointeger(L, -1);
 
+#ifdef DEBUG
   if( status < 0 )
   {
     REPORT(MSG_ERROR, "if(status < 0)" );
-    return -2;
+    return -3;
   }
+#endif
 
   if( status == 1 ) //INFO: Генерация прерывания
   {
@@ -177,27 +186,33 @@ static int32_t read_data(LUA_DEVICEState *s, uint64_t time_ns, uint64_t ADR_I, u
     return -1;
   }
 
-  if( ! lua_isinteger(L, 1))
+#ifdef DEBUG
+  if( ! lua_isinteger(L, -2))
   {
-    REPORT(MSG_ERROR, "if(! lua_isinteger(L, 1))" );
+    REPORT(MSG_ERROR, "if(! lua_isinteger(L, -2))" );
     return -2;
   }
+#endif
 
-  status = (int32_t)lua_tointeger(L, 1);
+  status = (int32_t)lua_tointeger(L, -2);
 
+#ifdef DEBUG
   if( status < 0 )
   {
     REPORT(MSG_ERROR, "if(status < 0)" );
     return -3;
   }
+#endif
 
-  if( ! lua_isinteger(L, 2))
+#ifdef DEBUG
+  if( ! lua_isinteger(L, -1)) /* Элемент на вершине стека, т.е. последний помещённый на стек элемент */
   {
-    REPORT(MSG_ERROR, "if(! lua_isinteger(L, 2))" );
+    REPORT(MSG_ERROR, "if(! lua_isinteger(L, -1))" );
     return -4;
   }
+#endif
 
-  *DAT_O = (uint64_t)lua_tointeger(L, 2);
+  *DAT_O = (uint64_t)lua_tointeger(L, -1);
 
   lua_pop(L, 2);
 
@@ -234,13 +249,23 @@ static int32_t write_data(LUA_DEVICEState *s, uint64_t time_ns, uint64_t ADR_I, 
     return -1;
   }
 
-  status = (int32_t)lua_tointeger(L, 1);
+#ifdef DEBUG
+  if( ! lua_isinteger(L, -1))
+  {
+    REPORT(MSG_ERROR, "if(! lua_isinteger(L, -1))" );
+    return -2;
+  }
+#endif
 
+  status = (int32_t)lua_tointeger(L, -1);
+
+#ifdef DEBUG
   if( status < 0 )
   {
     REPORT(MSG_ERROR, "if(status < 0)" );
     return -2;
   }
+#endif
 
   lua_pop(L, 1);
 
@@ -267,23 +292,22 @@ static void lua_device_timer_exchanger(void * opaque)
 }
 
 
-static uint64_t lua_device_read(void *opaque, hwaddr offset,
-                           unsigned size)
+static uint64_t lua_device_read(void *opaque, hwaddr offset, unsigned size)
 {
-	LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
+    LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
     uint64_t r = 0;
 
-    switch (offset) {
-    case LUA_REG:
+    switch (offset)
+    {
+      case LUA_REG:
         read_data(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), (uint64_t)offset, &r); //FIXME: ret
         break;
 
-    case 0xfe0 ... 0xfff:
+      case 0xfe0 ... 0xfff:
         r = lua_device_id[(offset - 0xfe0) >> 2];
         break;
-    default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "lua_device_read: Bad offset 0x%x\n", (int)offset);
+      default:
+        qemu_log_mask(LOG_GUEST_ERROR, "lua_device_read: Bad offset 0x%x\n", (int)offset);
         r = 0;
         break;
     }
@@ -293,30 +317,29 @@ static uint64_t lua_device_read(void *opaque, hwaddr offset,
 }
 
 
-static void lua_device_write(void * opaque, hwaddr offset,
-                        uint64_t value, unsigned size)
+static void lua_device_write(void * opaque, hwaddr offset, uint64_t value, unsigned size)
 {
-	LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
+    LUA_DEVICEState *s = (LUA_DEVICEState *)opaque;
 
     trace_lua_device_write(offset, value);
 
-    switch (offset) {
-    case LUA_REG:
+    switch (offset) 
+    {
+      case LUA_REG:
         write_data(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), (uint64_t)offset, value);
         break;
 
-    default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "lua_device_write: Bad offset 0x%x\n", (int)offset);
+      default:
+        qemu_log_mask(LOG_GUEST_ERROR, "lua_device_write: Bad offset 0x%x\n", (int)offset);
         break;
     }
 }
 
 
 static const MemoryRegionOps lua_device_ops = {
-    .read = lua_device_read,
-    .write = lua_device_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+  .read = lua_device_read,
+  .write = lua_device_write,
+  .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
 
@@ -337,7 +360,6 @@ static void lua_device_init(Object *obj)
   }
 
   REPORT(MSG_INFO, "<<<< INIT: lua_device >>>>" );
-  printf("<<<< INIT: lua_device >>>>\n");
 
   if( init_lua(s, "lua_device.lua", s->log_file) < 0 )
   {
@@ -362,24 +384,24 @@ static void lua_device_init(Object *obj)
 
 static void lua_device_finalize(Object *obj)
 {
-	LUA_DEVICEState *s = LUA_DEVICE(obj);
+  LUA_DEVICEState *s = LUA_DEVICE(obj);
 
-    timer_free(s->timer_exchange);
-    timer_free(s->timer);
+  timer_free(s->timer_exchange);
+  timer_free(s->timer);
 
-    if ( s->L != NULL )
-    {
-      lua_close( s->L );
-    }
+  if ( s->L != NULL )
+  {
+    lua_close( s->L );
+  }
 
-    REPORT(MSG_INFO, "<<<< DEINIT: lua_device >>>>" );
-    fclose(s->log_file);
+  REPORT(MSG_INFO, "<<<< DEINIT: lua_device >>>>" );
+  fclose(s->log_file);
 }
 
 
 static int lua_device_pre_save(void *opaque)
 {
-	//LUA_DEVICEState *s = opaque;
+  //LUA_DEVICEState *s = opaque;
 
   return 0;
 }
@@ -387,7 +409,7 @@ static int lua_device_pre_save(void *opaque)
 
 static int lua_device_pre_load(void *opaque)
 {
-	//LUA_DEVICEState *s = opaque;
+  //LUA_DEVICEState *s = opaque;
 
   return 0;
 }
@@ -395,7 +417,7 @@ static int lua_device_pre_load(void *opaque)
 
 static int lua_device_post_load(void *opaque, int version_id)
 {
-	//LUA_DEVICEState *s = opaque;
+  //LUA_DEVICEState *s = opaque;
 
   return 0;
 }
@@ -403,7 +425,7 @@ static int lua_device_post_load(void *opaque, int version_id)
 
 static int lua_device_tick_offset_post_load(void *opaque, int version_id)
 {
-	LUA_DEVICEState *s = opaque;
+  LUA_DEVICEState *s = opaque;
 
   s->tick_offset_migrated = true;
   return 0;
@@ -411,7 +433,7 @@ static int lua_device_tick_offset_post_load(void *opaque, int version_id)
 
 static bool lua_device_tick_offset_needed(void *opaque)
 {
-	LUA_DEVICEState *s = opaque;
+  LUA_DEVICEState *s = opaque;
 
   return s->migrate_tick_offset;
 }
@@ -460,8 +482,7 @@ static Property lua_device_properties[] = {
      * (Even if set to 'true' older QEMU can migrate forward to newer QEMU;
      * 'false' also permits newer QEMU to migrate to older QEMU.)
      */
-    DEFINE_PROP_BOOL("migrate-tick-offset",
-    		LUA_DEVICEState, migrate_tick_offset, true),
+    DEFINE_PROP_BOOL("migrate-tick-offset", LUA_DEVICEState, migrate_tick_offset, true),
     DEFINE_PROP_END_OF_LIST()
 };
 
