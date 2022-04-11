@@ -36,8 +36,9 @@
 #include "debug.h"
 
 
-#define LUA_REG_START     0x00    /* Lua register */
-#define LUA_REG_END       0x1C    /* Lua register */
+#define LUA_REG_START      0x00    /* Lua register */
+#define LUA_REG_END        0x1C    /* Lua register */
+#define LUA_REG_IRQ_CLEAR  0x20    /* Lua register */
 
 
 static const unsigned char lua_device_id[] = {
@@ -109,10 +110,10 @@ static int init_lua(LUA_DEVICEState *s, const char *fname, FILE *log_file)
 
 static void lua_device_irq(LUA_DEVICEState *s)
 {
-  uint32_t flags = 1; //s->is & s->im;
+  uint32_t flags = 1;
 
   trace_lua_device_irq_state(flags);
-  qemu_set_irq(s->irq, flags);
+  qemu_set_irq(s->irq, 1);
 }
 
 
@@ -301,6 +302,10 @@ static uint64_t lua_device_read(void *opaque, hwaddr offset, unsigned size)
         read_data(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), (uint64_t)offset, &r); //FIXME: ret
         break;
 
+      case LUA_REG_IRQ_CLEAR:
+        REPORT(MSG_INFO, "case LUA_REG_IRQ_CLEAR" );
+        qemu_set_irq(s->irq, 0);
+        break;
       case 0xfe0 ... 0xfff:
         r = lua_device_id[(offset - 0xfe0) >> 2];
         break;
@@ -326,7 +331,10 @@ static void lua_device_write(void * opaque, hwaddr offset, uint64_t value, unsig
       case LUA_REG_START ... LUA_REG_END:
         write_data(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), (uint64_t)offset, value);
         break;
-
+      case LUA_REG_IRQ_CLEAR:
+        REPORT(MSG_INFO, "case LUA_REG_IRQ_CLEAR" );
+        qemu_set_irq(s->irq, 0);
+        break;
       default:
         qemu_log_mask(LOG_GUEST_ERROR, "lua_device_write: Bad offset 0x%x\n", (int)offset);
         break;
@@ -395,6 +403,17 @@ static void lua_device_finalize(Object *obj)
   REPORT(MSG_INFO, "<<<< DEINIT: lua_device >>>>" );
   fclose(s->log_file);
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 static int lua_device_pre_save(void *opaque)
